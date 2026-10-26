@@ -33,6 +33,7 @@ CACHE_TTL = 24 * 3600
 DIDO = "https://data.statistiques.developpement-durable.gouv.fr/dido/api/v1/datafiles"
 REGION = "https://data.regionreunion.com/api/explore/v2.1/catalog/datasets"
 GEO = "https://geo.api.gouv.fr"
+MELODI = "https://api.insee.fr/melodi/data"
 WFS = "https://data.geopf.fr/wfs/ows"
 REUNION_BBOX = "55.18,-21.42,55.86,-20.85"
 GRID_STEP = 0.01  # maille d'agrégation des parcelles de canne (~1 km)
@@ -91,6 +92,18 @@ SOURCES = {
         "producer": "DAAF Réunion, notes de conjoncture (saisie manuelle depuis les PDF)",
         "licence": "Document administratif public",
         "page": "https://daaf.reunion.agriculture.gouv.fr",
+    },
+    "menages": {
+        "label": "Ménages et équipement automobile par commune (recensement 2023)",
+        "producer": "INSEE, API Melodi (DS_RP_LOGEMENT_PRINC)",
+        "licence": "Licence Ouverte v2.0",
+        "page": "https://catalogue-donnees.insee.fr/fr/catalogue/recherche/DS_RP_LOGEMENT_PRINC",
+    },
+    "revenus": {
+        "label": "Niveau de vie médian et taux de pauvreté par commune (Filosofi 2023)",
+        "producer": "INSEE, API Melodi (DS_FILOSOFI_CC)",
+        "licence": "Licence Ouverte v2.0",
+        "page": "https://catalogue-donnees.insee.fr/fr/catalogue/recherche/DS_FILOSOFI_CC",
     },
     "prix": {
         "label": "Prix maximums des carburants (arrêtés préfectoraux mensuels)",
@@ -193,6 +206,14 @@ def fetch_cane_parcels(force):
         page += 1
 
 
+def fetch_melodi(name, dataset, codes, force, **filtres):
+    """Observations Melodi (INSEE) pour les communes données, sans clé d'API."""
+    q = [("maxResult", "10000"), *[("GEO", f"2026-COM-{c}") for c in codes]]
+    q += [(k, x) for k, v in filtres.items() for x in (v if isinstance(v, list) else [v])]
+    body = fetch(name, f"{MELODI}/{dataset}?" + urllib.parse.urlencode(q), force)
+    return json.loads(body)["observations"]
+
+
 def collect(force):
     CACHE.mkdir(parents=True, exist_ok=True)
     communes = json.loads(fetch(
@@ -204,7 +225,13 @@ def collect(force):
     codes = ",".join(f["properties"]["code"] for f in communes["features"])
     dido_args = f"csv?withColumnName=true&withColumnDescription=false&COMMUNE_CODE=in:{codes}"
     where = urllib.parse.quote('equipment_code="B316"')
+    code_list = codes.split(",")
+    tous = {k: "_T" for k in ("BUILD_END", "NRG_SRC", "TDW", "TSH", "CARPARK", "NOR", "L_STAY")}
     return {
+        "menages": fetch_melodi("menages_voiture.json", "DS_RP_LOGEMENT_PRINC", code_list, force, TIME_PERIOD="2023",
+                                RP_MEASURE="DWELLINGS", OCS="DW_MAIN", CARS=["_T", "C_GE1", "C_GE2"], **tous),
+        "revenus": fetch_melodi("filosofi.json", "DS_FILOSOFI_CC", code_list, force,
+                                FILOSOFI_MEASURE=["MED_SL", "PR_MD60"]),
         "communes": communes,
         "parc": read_csv(fetch("parc.csv", f"{DIDO}/1582861b-e042-4490-9161-6429d8229703/{dido_args}", force)),
         "immat": read_csv(fetch("immat_neuf.csv", f"{DIDO}/47354cb5-a501-446c-a4f7-1840d6e92f05/{dido_args}", force)),
@@ -244,6 +271,37 @@ def build_communes(raw):
         features.append({"type": "Feature", "properties": {"code": p["code"], "nom": p["nom"]},
                          "geometry": {"type": geom["type"], "coordinates": round_coords(geom["coordinates"])}})
     return info, {"type": "FeatureCollection", "features": features}
+
+
+def build_contour(geo):
+    """Trait de côte : les arêtes des contours communaux qui n'appartiennent qu'à une commune,
+    enchaînées en polylignes [lat, lon]."""
+    compte = {}
+    for f in geo["features"]:
+        for poly in polygons(f["geometry"]):
+            for ring in poly:
+                for a, b in zip(ring, ring[1:] + ring[:1]):
+                    if a != b:
+                        cle = tuple(sorted((tuple(a), tuple(b))))
+                        compte[cle] = compte.get(cle, 0) + 1
+    voisins = {}
+    for a, b in (k for k, n in compte.items() if n == 1):
+        voisins.setdefault(a, []).append(b)
+        voisins.setdefault(b, []).append(a)
+    lignes = []
+    while voisins:
+        depart = next(iter(voisins))
+        ligne, courant = [depart], depart
+        while voisins.get(courant):
+            suivant = voisins[courant].pop()
+            voisins[suivant].remove(courant)
+            if not voisins[courant]:
+                del voisins[courant]
+            ligne.append(suivant)
+            courant = suivant
+        voisins.pop(courant, None)
+        lignes.append([[lat, lon] for lon, lat in ligne])
+    return sorted(lignes, key=len, reverse=True)
 
 
 def build_parc(raw, communes):
@@ -371,6 +429,25 @@ def build_canne(raw, geo):
             "par_commune": {k: round(v, 1) for k, v in per_commune.items()}, "mailles": cells}
 
 
+def build_menages(raw):
+    """Par commune : ménages, part motorisée (au moins une voiture), part multi-motorisée, niveau de vie médian."""
+    out = {}
+    for o in raw["menages"]:
+        code = o["dimensions"]["GEO"][-5:]
+        out.setdefault(code, {})[o["dimensions"]["CARS"]] = o["measures"]["OBS_VALUE_NIVEAU"].get("value") or 0
+    res = {}
+    for code, v in out.items():
+        total = v.get("_T") or 0
+        res[code] = {"menages": round(total), "part_motorises": round(v.get("C_GE1", 0) / total, 4) if total else None,
+                     "part_multi": round(v.get("C_GE2", 0) / total, 4) if total else None}
+    for o in raw["revenus"]:
+        code = o["dimensions"]["GEO"][-5:]
+        val = o["measures"]["OBS_VALUE_NIVEAU"].get("value")  # absente si secret statistique
+        key = {"MED_SL": "niveau_vie_median", "PR_MD60": "taux_pauvrete"}[o["dimensions"]["FILOSOFI_MEASURE"]]
+        res.setdefault(code, {})[key] = val
+    return res
+
+
 def build_sucrerie(raw):
     return [{"nom": s["nom"], "type": "usine" if s["type"] == "Usine" else "balance",
              "lat": round(s["geo_point_2d"]["lat"], 5), "lon": round(s["geo_point_2d"]["lon"], 5)}
@@ -387,7 +464,10 @@ def run(force=False):
     stations = build_stations(raw, lines)
     canne = build_canne(raw, geo)
 
+    menages = build_menages(raw)
     for code, c in communes.items():
+        c.update({"menages": None, "part_motorises": None, "part_multi": None,
+                  "niveau_vie_median": None, "taux_pauvrete": None}, **menages.get(code, {}))
         c["stations"] = sum(1 for s in stations if s["commune"] == code)
         c["motos_10ans"] = motos_10y[code]
         c["canne_ha"] = canne["par_commune"].get(code, 0)
@@ -395,11 +475,13 @@ def run(force=False):
     meta = {}
     files = {"communes": ["communes.geojson"], "parc": ["parc.csv"], "immat": ["immat_neuf.csv"],
              "conso": ["conso_drom.csv"], "stations": ["stations_bpe.json"], "tmja": ["tmja_rn.json"],
-             "sucrerie": ["balances_canne.json"], "canne": ["rpg_canne_0.json"]}
+             "sucrerie": ["balances_canne.json"], "canne": ["rpg_canne_0.json"],
+             "menages": ["menages_voiture.json"], "revenus": ["filosofi.json"]}
     sizes = {"communes": len(communes), "parc": len(raw["parc"]), "immat": len(raw["immat"]),
              "conso": len(raw["conso"]), "stations": len(stations), "tmja": len(raw["tmja"]),
              "sucrerie": len(raw["sucrerie"]), "canne": len(raw["canne"]),
-             "campagnes": len(raw["campagnes"]), "prix": len(raw["prix"])}
+             "campagnes": len(raw["campagnes"]), "prix": len(raw["prix"]),
+             "menages": len(raw["menages"]), "revenus": len(raw["revenus"])}
     for key, src in SOURCES.items():
         entry = dict(src, lignes=sizes[key], recupere_le=None)
         if key in files:
@@ -410,11 +492,13 @@ def run(force=False):
     meta["tmja"]["millesime"] = tmja_year
     meta["parc"]["millesime"] = years[-1]
     meta["immat"]["millesime"] = immat["annees"][-1]
+    meta["menages"]["millesime"] = meta["revenus"]["millesime"] = 2023
 
     out = {
         "genere_le": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "communes": communes,
         "geo": geo,
+        "contour": build_contour(geo),
         "parc": {"annees": years, "par_commune": parc},
         "immat": immat,
         "conso": build_conso(raw),
