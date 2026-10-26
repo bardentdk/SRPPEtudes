@@ -30,7 +30,7 @@ export default function Page() {
         <section>
           <h2>Où sont stockées les données</h2>
           <p>
-            Dans une base Supabase hébergée dans l&apos;Union européenne, avec une copie dans une feuille Google Sheets privée. Les coordonnées sont stockées à part
+            Dans une base Neon (PostgreSQL) hébergée dans l&apos;Union européenne (Francfort), avec une copie dans une feuille Google Sheets privée. Les coordonnées sont stockées à part
             et ne sont visibles que des administrateurs de l&apos;étude.
           </p>
         </section>

@@ -1,6 +1,6 @@
 import { adminConnecte, nonAutorise } from "@/lib/admin";
 import { lireFiltres, lireReponses, ligneSheet, type Contact } from "@/lib/questionnaire/serveur";
-import { supabaseAdmin } from "@/lib/supabase/serveur";
+import { sql } from "@/lib/db";
 
 const cellule = (v: string | number) => {
   const s = String(v);
@@ -17,8 +17,8 @@ export async function GET(request: Request) {
   const avecContacts = params.get("contacts") === "1";
   const contacts = new Map<string, Contact>();
   if (avecContacts) {
-    const { data } = await supabaseAdmin().from("contacts").select("reponse_id, nom, structure, email, consentement");
-    for (const c of data ?? []) contacts.set(c.reponse_id, c);
+    const lignesContacts = (await sql`select reponse_id, nom, structure, email, consentement from contacts`) as (Contact & { reponse_id: string })[];
+    for (const c of lignesContacts) contacts.set(c.reponse_id, c);
   }
   const rangs = lignes.map((l) => {
     const r = ligneSheet(l, contacts.get(l.id));

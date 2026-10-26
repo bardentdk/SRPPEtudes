@@ -1,5 +1,5 @@
 import "server-only";
-import { supabaseAdmin } from "../supabase/serveur";
+import { sql } from "../db";
 import { QUESTIONS, type Reponses } from "./schema";
 import type { LigneReponse } from "./agregation";
 import type { Public } from "../types";
@@ -8,6 +8,7 @@ export interface ReponseStockee extends LigneReponse {
   id: string;
   sheet_sync: boolean;
   version_schema: number;
+  contact: boolean;
 }
 
 export interface Contact { nom: string | null; structure: string | null; email: string | null; consentement: boolean }
@@ -20,39 +21,43 @@ export interface Filtres {
   contact?: "oui" | "non" | null;
 }
 
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
 export function lireFiltres(params: URLSearchParams): Filtres {
   const p = params.get("public");
+  const date = (k: string) => (DATE.test(params.get(k) ?? "") ? params.get(k) : null);
   return {
     public: (["part", "pro", "club", "station", "filiere"] as const).find((x) => x === p) ?? null,
-    commune: params.get("commune") || null,
-    du: params.get("du") || null,
-    au: params.get("au") || null,
+    commune: /^974\d{2}$/.test(params.get("commune") ?? "") ? params.get("commune") : null,
+    du: date("du"),
+    au: date("au"),
     contact: params.get("contact") === "oui" ? "oui" : params.get("contact") === "non" ? "non" : null,
   };
 }
 
-const COLONNES = "id, cree_le, public, profil, commune_code, donnees, sheet_sync, version_schema";
+const AVEC_CONTACT = "exists (select 1 from contacts c where c.reponse_id = r.id)";
 
-/** Réponses filtrées, triées de la plus récente à la plus ancienne. */
-export async function lireReponses(f: Filtres = {}, limite = 5000) {
-  let req = supabaseAdmin()
-    .from("reponses")
-    .select(f.contact ? `${COLONNES}, contacts!inner(consentement)` : COLONNES)
-    .order("cree_le", { ascending: false })
-    .limit(limite);
-  if (f.public) req = req.eq("public", f.public);
-  if (f.commune) req = req.eq("commune_code", f.commune);
-  if (f.du) req = req.gte("cree_le", f.du);
-  if (f.au) req = req.lte("cree_le", `${f.au}T23:59:59`);
-  const { data, error } = await req;
-  if (error) throw new Error(error.message);
-  let lignes = (data ?? []) as unknown as ReponseStockee[];
-  if (f.contact === "non") {
-    const { data: avec } = await supabaseAdmin().from("contacts").select("reponse_id");
-    const ids = new Set((avec ?? []).map((c) => c.reponse_id));
-    lignes = lignes.filter((l) => !ids.has(l.id));
-  }
-  return lignes;
+/** Réponses filtrées, de la plus récente à la plus ancienne (requête paramétrée). */
+export async function lireReponses(f: Filtres = {}, limite = 5000): Promise<ReponseStockee[]> {
+  const conditions: string[] = [];
+  const valeurs: unknown[] = [];
+  const ajouter = (condition: string, valeur: unknown) => {
+    valeurs.push(valeur);
+    conditions.push(condition.replace("?", `$${valeurs.length}`));
+  };
+  if (f.public) ajouter("r.public = ?", f.public);
+  if (f.commune) ajouter("r.commune_code = ?", f.commune);
+  if (f.du) ajouter("r.cree_le >= ?::date", f.du);
+  if (f.au) ajouter("r.cree_le < (?::date + 1)", f.au);
+  if (f.contact) conditions.push(f.contact === "oui" ? AVEC_CONTACT : `not ${AVEC_CONTACT}`);
+  valeurs.push(Math.min(Math.max(1, Math.floor(limite)), 5000));
+  const lignes = (await sql.query(
+    `select r.id, r.cree_le, r.public, r.profil, r.commune_code, r.donnees, r.sheet_sync, r.version_schema, ${AVEC_CONTACT} as contact
+       from reponses r ${conditions.length ? `where ${conditions.join(" and ")}` : ""}
+      order by r.cree_le desc limit $${valeurs.length}`,
+    valeurs,
+  )) as (Omit<ReponseStockee, "cree_le"> & { cree_le: string | Date })[];
+  return lignes.map((l) => ({ ...l, cree_le: new Date(l.cree_le).toISOString() }));
 }
 
 /** Empreinte salée de l'adresse IP : permet de limiter les envois sans conserver l'adresse. */
@@ -64,9 +69,9 @@ export async function empreinteIp(request: Request) {
 }
 
 /** Ligne à plat pour la Google Sheet : une colonne par question, valeurs multiples séparées par « ; ». */
-export function ligneSheet(r: { id: string; cree_le: string; public: string; profil: string; commune_code: string | null; donnees: Reponses }, contact?: Contact | null) {
+export function ligneSheet(r: { id: string; cree_le: string | Date; public: string; profil: string; commune_code: string | null; donnees: Reponses }, contact?: Contact | null) {
   const ligne: Record<string, string | number> = {
-    id: r.id, cree_le: r.cree_le, public: r.public, profil: r.profil, commune_code: r.commune_code ?? "",
+    id: r.id, cree_le: new Date(r.cree_le).toISOString(), public: r.public, profil: r.profil, commune_code: r.commune_code ?? "",
   };
   for (const q of QUESTIONS) {
     if (q.personnel) continue;

@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: "Connexion admin · Carburants Réuni
 
 export default function Page() {
   return (
-    <PageSimple titre="Espace administrateur" sousTitre="Recevez un lien de connexion par e-mail. Seules les adresses autorisées peuvent accéder aux réponses.">
+    <PageSimple titre="Espace administrateur" sousTitre="Accès réservé aux administrateurs de l'étude.">
       <Connexion />
     </PageSimple>
   );

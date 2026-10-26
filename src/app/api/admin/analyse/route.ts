@@ -7,7 +7,7 @@ import { agreger } from "@/lib/questionnaire/agregation";
 import { COMMUNES } from "@/lib/questionnaire/communes";
 import { ID_PERSONNELS } from "@/lib/questionnaire/schema";
 import { anonymiser, lireFiltres, lireReponses } from "@/lib/questionnaire/serveur";
-import { supabaseAdmin } from "@/lib/supabase/serveur";
+import { sql } from "@/lib/db";
 
 const ANALYSES_PAR_HEURE = 10;
 const MAX_REPONSES = 400;
@@ -27,8 +27,8 @@ N'invente aucun chiffre absent des données, signale quand un effectif est trop 
 
 export async function GET() {
   if (!(await adminConnecte())) return nonAutorise();
-  const { data } = await supabaseAdmin().from("analyses_ia").select("id, cree_le, auteur, filtres, modele, nb_reponses, resultat").order("cree_le", { ascending: false }).limit(20);
-  return Response.json({ analyses: data ?? [] });
+  const analyses = await sql`select id, cree_le, auteur, filtres, modele, nb_reponses, resultat from analyses_ia order by cree_le desc limit 20`;
+  return Response.json({ analyses });
 }
 
 export async function POST(request: Request) {
@@ -37,9 +37,8 @@ export async function POST(request: Request) {
   const cle = process.env.GROQ_API_KEY;
   if (!cle) return Response.json({ error: "Analyse IA non configurée (GROQ_API_KEY)." }, { status: 503 });
 
-  const db = supabaseAdmin();
-  const { count } = await db.from("analyses_ia").select("id", { count: "exact", head: true }).gte("cree_le", new Date(Date.now() - 3600_000).toISOString());
-  if ((count ?? 0) >= ANALYSES_PAR_HEURE) return Response.json({ error: "Limite de 10 analyses par heure atteinte." }, { status: 429 });
+  const [{ n }] = (await sql`select count(*)::int as n from analyses_ia where cree_le > now() - interval '1 hour'`) as { n: number }[];
+  if (n >= ANALYSES_PAR_HEURE) return Response.json({ error: "Limite de 10 analyses par heure atteinte." }, { status: 429 });
 
   const params = new URL(request.url).searchParams;
   const filtres = lireFiltres(params);
@@ -76,8 +75,9 @@ export async function POST(request: Request) {
   const resultat = corps.choices?.[0]?.message?.content?.trim();
   if (!resultat) return Response.json({ error: "Réponse vide de Groq." }, { status: 502 });
 
-  const { data } = await db.from("analyses_ia")
-    .insert({ auteur: admin, filtres, modele, nb_reponses: lignes.length, resultat })
-    .select("id, cree_le, auteur, filtres, modele, nb_reponses, resultat").single();
-  return Response.json({ analyse: data });
+  const [analyse] = await sql`
+    insert into analyses_ia (auteur, filtres, modele, nb_reponses, resultat)
+    values (${admin}, ${JSON.stringify(filtres)}::jsonb, ${modele}, ${lignes.length}, ${resultat})
+    returning id, cree_le, auteur, filtres, modele, nb_reponses, resultat`;
+  return Response.json({ analyse });
 }

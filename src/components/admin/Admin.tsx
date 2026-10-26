@@ -10,6 +10,7 @@ import { Card, Kpi, Vide } from "../ui";
 import { Ranking } from "../charts";
 import { useTokens } from "../useTokens";
 import Markdown from "./Markdown";
+import { authClient } from "@/lib/auth-client";
 
 interface Ligne {
   id: string; cree_le: string; public: Public; profil: string; commune_code: string | null; donnees: Reponses; sheet_sync: boolean; contact: boolean;
@@ -95,7 +96,7 @@ export default function Admin({ email }: { email: string }) {
   };
 
   const deconnecter = async () => {
-    await fetch("/api/admin/deconnexion", { method: "POST" });
+    await authClient.signOut();
     router.push("/admin/connexion");
   };
 

@@ -1,24 +1,24 @@
 import { adminConnecte, nonAutorise } from "@/lib/admin";
-import { supabaseAdmin } from "@/lib/supabase/serveur";
+import { sql } from "@/lib/db";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Fiche complète d'une réponse, coordonnées comprises (visibles dans l'espace admin uniquement). */
 export async function GET(_request: Request, ctx: RouteContext<"/api/admin/reponses/[id]">) {
   if (!(await adminConnecte())) return nonAutorise();
   const { id } = await ctx.params;
-  const db = supabaseAdmin();
-  const [{ data: reponse }, { data: contact }] = await Promise.all([
-    db.from("reponses").select("id, cree_le, public, profil, commune_code, donnees, sheet_sync, version_schema").eq("id", id).maybeSingle(),
-    db.from("contacts").select("nom, structure, email, consentement").eq("reponse_id", id).maybeSingle(),
-  ]);
+  if (!UUID.test(id)) return Response.json({ error: "Réponse introuvable." }, { status: 404 });
+  const [reponse] = await sql`select id, cree_le, public, profil, commune_code, donnees, sheet_sync, version_schema from reponses where id = ${id}`;
   if (!reponse) return Response.json({ error: "Réponse introuvable." }, { status: 404 });
-  return Response.json({ reponse, contact });
+  const [contact] = await sql`select nom, structure, email, consentement from contacts where reponse_id = ${id}`;
+  return Response.json({ reponse, contact: contact ?? null });
 }
 
-/** Suppression définitive (demande d'effacement RGPD) : la réponse et ses coordonnées. */
+/** Suppression définitive (demande d'effacement RGPD) : la réponse et, en cascade, ses coordonnées. */
 export async function DELETE(_request: Request, ctx: RouteContext<"/api/admin/reponses/[id]">) {
   if (!(await adminConnecte())) return nonAutorise();
   const { id } = await ctx.params;
-  const { error, count } = await supabaseAdmin().from("reponses").delete({ count: "exact" }).eq("id", id);
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json({ supprimees: count ?? 0 });
+  if (!UUID.test(id)) return Response.json({ supprimees: 0 });
+  const supprimees = await sql`delete from reponses where id = ${id} returning id`;
+  return Response.json({ supprimees: supprimees.length });
 }

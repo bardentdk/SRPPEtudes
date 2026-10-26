@@ -18,8 +18,8 @@ src/lib/hypotheses.ts           hypothèses du modèle, avec leur justification
 src/components/                 interface (Leaflet, Recharts, Tailwind)
 src/app/api/refresh/route.ts    bouton « Actualiser » : déclenche le workflow GitHub
 src/lib/questionnaire/          schéma du questionnaire, agrégation, accès serveur
+db/migrations/, scripts/        schéma SQL (Neon), migrations et création des comptes admin
 src/app/questionnaire, /admin   questionnaire public et espace admin (routes API sous src/app/api)
-supabase/migrations/            schéma de la base Supabase
 questionnaire/reception.gs      copie des réponses dans Google Sheets
 .github/workflows/refresh-data.yml   collecte planifiée (lundi 3 h UTC) ou à la demande
 ```
@@ -66,13 +66,13 @@ Le questionnaire est une page du site, `/questionnaire`. Les questions sont déc
 
 Circuit d'une réponse :
 1. **`POST /api/reponses`** : validation par le schéma, puis protections anti-spam (champ piège, 20 s minimum de remplissage, 5 envois par heure et par connexion).
-2. **Supabase** : la réponse va dans `reponses`, les coordonnées éventuelles dans `contacts`, une table à part. La RLS est activée sans aucune politique : seules les routes serveur, avec la clé `service_role`, y accèdent.
+2. **Neon** (Postgres) : la réponse va dans `reponses`, les coordonnées éventuelles dans `contacts`, une table à part. Seules les routes serveur accèdent à la base, avec `DATABASE_URL`, par des requêtes paramétrées.
 3. **Google Sheet** : une copie est envoyée via `questionnaire/reception.gs`, une application web Apps Script protégée par jeton. En cas d'échec, l'admin peut relancer la copie.
 4. **Tableau de bord** : `GET /api/questionnaire/agregats` calcule en direct des agrégats anonymes. Toute répartition sur moins de 3 réponses est masquée. Le résultat est mis en cache 5 minutes.
 
 ## Espace admin
 
-`/admin` : connexion par lien magique, réservée aux adresses listées dans `ADMIN_EMAILS`. L'accès est vérifié côté serveur dans la page et dans chaque route `/api/admin/*` ; le proxy (`src/proxy.ts`) ne fait que rediriger.
+`/admin` : connexion par e-mail et mot de passe (Better Auth, inscription fermée, 5 essais par 5 minutes), réservée aux adresses listées dans `ADMIN_EMAILS`. L'accès est vérifié côté serveur dans la page et dans chaque route `/api/admin/*` ; le proxy (`src/proxy.ts`) ne fait que rediriger.
 
 On y trouve :
 - des filtres (public, commune, période, coordonnées), la recherche et le tri ;
@@ -83,15 +83,21 @@ On y trouve :
 
 ## Mise en service du questionnaire
 
-1. Créez **deux projets Supabase** en région UE (Francfort) : `srpp-dev` pour les essais, `srpp-prod` pour les vraies réponses.
-2. Exécutez `supabase/migrations/0001_questionnaire.sql` dans l'éditeur SQL de chaque projet.
-3. Dans *Authentication* :
-   - désactivez les inscriptions (*Allow new users to sign up*) ;
-   - créez les comptes admin (*Add user → Send invitation*) ;
-   - ajoutez `https://<votre-domaine>/admin/auth/callback` aux URL de redirection, ainsi que `http://localhost:3000/admin/auth/callback` sur le projet dev.
-4. Déployez `questionnaire/reception.gs` (instructions en tête du fichier).
-5. Créez une clé API sur console.groq.com.
-6. Renseignez les variables de `.env.example` : dans `.env.local` avec les clés **dev**, et dans Vercel avec les clés **prod**.
+1. Dans Neon, utilisez la branche **dev** pour les essais et la branche **production** pour les vraies réponses.
+2. Renseignez les variables de `.env.example` : dans `.env.local` avec la chaîne de la branche dev, et dans Vercel avec celle de la production.
+3. Appliquez les migrations. Sans option, le script affiche la base visée et ce qui reste à appliquer :
+
+   ```bash
+   node --env-file=.env.local scripts/migrer.mjs --appliquer
+   ```
+
+4. Créez un compte admin. Le mot de passe est saisi sans écho, et seul son hachage est stocké :
+
+   ```bash
+   node --env-file=.env.local scripts/creer-admin.mjs
+   ```
+
+5. Déployez `questionnaire/reception.gs` (instructions en tête du fichier), puis créez une clé API sur console.groq.com.
 
 ## Modèle économique
 
