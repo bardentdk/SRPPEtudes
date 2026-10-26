@@ -66,7 +66,7 @@ export default function MapView({ data, valeurs, unite, libelle, couches, classe
       preferCanvas
       scrollWheelZoom={false}
       className="h-full w-full"
-      style={{ background: "var(--sea)" }} // leaflet.css impose #ddd ; la variable suit le thème sans re-rendu
+      style={{ background: "#d9d9d9" }} // leaflet.css impose #ddd ; la variable suit le thème sans re-rendu
       attributionControl
     >
       <Pane name="communes" style={{ zIndex: PLANS.communes }}>
