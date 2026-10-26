@@ -28,9 +28,6 @@ jobs:
 
       - name: Collecte et traitement
         run: python3 pipeline/run.py --force
-        env:
-          # Adresse de l'onglet « export » publié en CSV (secret : elle donne les réponses ligne à ligne).
-          QUESTIONNAIRE_CSV_URL: ${{ secrets.QUESTIONNAIRE_CSV_URL }}
 
       - name: Commit si les données ont changé
         run: |

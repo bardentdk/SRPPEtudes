@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { CourbePrix, Dashboard, Public } from "@/lib/types";
 import { fmt, lirePalier, type QuestionnaireActif } from "@/lib/analysis";
 import { Card, Kpi, Vide } from "../ui";
@@ -50,8 +51,8 @@ export function QuestionnaireDetail({ data, q, tokens }: { data: Dashboard; q: Q
   if (!q) {
     return (
       <Vide>
-        Aucune réponse n&apos;est encore branchée. Une fois l&apos;onglet « export » de la feuille publié en CSV et son adresse placée dans le secret
-        GitHub <code>QUESTIONNAIRE_CSV_URL</code>, l&apos;actualisation des données ajoutera ici les résultats agrégés (seuil de {data.questionnaire?.disponible ? data.questionnaire.seuil_k : 3} réponses minimum par répartition).
+        Aucune réponse pour le moment. Les résultats du <Link href="/questionnaire" className="underline">questionnaire</Link> s&apos;afficheront ici en direct,
+        agrégés (seuil de {data.questionnaire?.disponible ? data.questionnaire.seuil_k : 3} réponses minimum par répartition).
       </Vide>
     );
   }
@@ -59,9 +60,9 @@ export function QuestionnaireDetail({ data, q, tokens }: { data: Dashboard; q: Q
   return (
     <div className="mt-4 space-y-4">
       <div className="grid gap-4 lg:grid-cols-2">
-        <Courbe titre="SP98 : achat selon le surcoût" sousTitre="Particuliers, professionnels (pour leurs clients) et clubs (pour leurs membres), pondérés par le nombre de réponses."
+        <Courbe titre="SP98 : achat selon le surcoût" sousTitre="Part des répondants prêts à payer au moins ce surcoût : particuliers, professionnels (pour leurs clients) et clubs (pour leurs membres)."
           courbe={q.prix_sp98} unite={(v) => `+${fmt.eur(v)}`} tokens={tokens} />
-        <Courbe titre="E85 : usage selon le prix à la pompe" sousTitre="Avec un véhicule compatible. À 1,20 €/L, l'E85 revient à environ 1,50 € pour la distance d'un litre de SP95."
+        <Courbe titre="E85 : usage selon le prix à la pompe" sousTitre="Part des répondants prêts à payer au moins ce prix, avec un véhicule compatible. À 1,20 €/L, l'E85 revient à environ 1,50 € pour la distance d'un litre de SP95."
           courbe={q.prix_e85} unite={(v) => fmt.eur(v)} tokens={tokens} />
       </div>
       <div className="grid gap-4 lg:grid-cols-3">

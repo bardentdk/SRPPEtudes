@@ -17,6 +17,10 @@ src/lib/analysis.ts             calculs de viabilité (fonctions pures)
 src/lib/hypotheses.ts           hypothèses du modèle, avec leur justification
 src/components/                 interface (Leaflet, Recharts, Tailwind)
 src/app/api/refresh/route.ts    bouton « Actualiser » : déclenche le workflow GitHub
+src/lib/questionnaire/          schéma du questionnaire, agrégation, accès serveur
+src/app/questionnaire, /admin   questionnaire public et espace admin (routes API sous src/app/api)
+supabase/migrations/            schéma de la base Supabase
+questionnaire/reception.gs      copie des réponses dans Google Sheets
 .github/workflows/refresh-data.yml   collecte planifiée (lundi 3 h UTC) ou à la demande
 ```
 
@@ -58,18 +62,36 @@ Sans ces variables, le site fonctionne normalement ; seul le bouton d'actualisat
 
 ## Questionnaire de demande
 
-Le formulaire Google « Étude Carburants Réunion 2026 » est généré par `questionnaire/creer-formulaire.gs`, un script à exécuter dans Apps Script :
-- `reconstruireFormulaire()` réécrit le formulaire existant sans changer son lien ;
-- `creerFormulaire()` crée un nouveau formulaire.
+Le questionnaire est une page du site, `/questionnaire`. Les questions sont décrites une seule fois dans `src/lib/questionnaire/schema.ts`, avec leur type (choix, curseur, nombre…), les publics concernés et leurs conditions d'affichage. Cette même description sert au formulaire, à la validation côté serveur, à la copie dans la Sheet et à l'agrégation. Changer l'`id` d'une question casse la continuité des réponses déjà enregistrées.
 
-Chaque public suit son propre parcours : particulier, professionnel de l'automobile, club, station ou distributeur, filière canne.
+Circuit d'une réponse :
+1. **`POST /api/reponses`** : validation par le schéma, puis protections anti-spam (champ piège, 20 s minimum de remplissage, 5 envois par heure et par connexion).
+2. **Supabase** : la réponse va dans `reponses`, les coordonnées éventuelles dans `contacts`, une table à part. La RLS est activée sans aucune politique : seules les routes serveur, avec la clé `service_role`, y accèdent.
+3. **Google Sheet** : une copie est envoyée via `questionnaire/reception.gs`, une application web Apps Script protégée par jeton. En cas d'échec, l'admin peut relancer la copie.
+4. **Tableau de bord** : `GET /api/questionnaire/agregats` calcule en direct des agrégats anonymes. Toute répartition sur moins de 3 réponses est masquée. Le résultat est mis en cache 5 minutes.
 
-Branchement sur le tableau de bord :
-1. Dans la feuille de réponses, publiez **uniquement l'onglet `export`** au format CSV (*Fichier → Partager → Publier sur le Web*). Cet onglet ne contient ni coordonnées ni texte libre.
-2. Enregistrez l'adresse obtenue dans le secret GitHub `QUESTIONNAIRE_CSV_URL` (*Settings → Secrets and variables → Actions*). En local, exportez la même variable avant de lancer `pipeline/run.py`.
-3. `pipeline/questionnaire.py` ne publie que des agrégats. Toute répartition calculée sur moins de 3 réponses est masquée.
+## Espace admin
 
-Si vous modifiez un intitulé de question dans le script, reportez le début de l'intitulé dans `COLONNES` (`pipeline/questionnaire.py`).
+`/admin` : connexion par lien magique, réservée aux adresses listées dans `ADMIN_EMAILS`. L'accès est vérifié côté serveur dans la page et dans chaque route `/api/admin/*` ; le proxy (`src/proxy.ts`) ne fait que rediriger.
+
+On y trouve :
+- des filtres (public, commune, période, coordonnées), la recherche et le tri ;
+- la fiche détaillée de chaque réponse, coordonnées comprises ;
+- l'export CSV, avec ou sans coordonnées ;
+- la suppression d'une réponse (droit à l'effacement) ;
+- l'**analyse IA** : synthèse par Groq des réponses filtrées. Groq ne reçoit aucune coordonnée, et les e-mails, numéros, liens et pseudonymes sont retirés des textes libres.
+
+## Mise en service du questionnaire
+
+1. Créez **deux projets Supabase** en région UE (Francfort) : `srpp-dev` pour les essais, `srpp-prod` pour les vraies réponses.
+2. Exécutez `supabase/migrations/0001_questionnaire.sql` dans l'éditeur SQL de chaque projet.
+3. Dans *Authentication* :
+   - désactivez les inscriptions (*Allow new users to sign up*) ;
+   - créez les comptes admin (*Add user → Send invitation*) ;
+   - ajoutez `https://<votre-domaine>/admin/auth/callback` aux URL de redirection, ainsi que `http://localhost:3000/admin/auth/callback` sur le projet dev.
+4. Déployez `questionnaire/reception.gs` (instructions en tête du fichier).
+5. Créez une clé API sur console.groq.com.
+6. Renseignez les variables de `.env.example` : dans `.env.local` avec les clés **dev**, et dans Vercel avec les clés **prod**.
 
 ## Modèle économique
 

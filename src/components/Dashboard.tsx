@@ -1,8 +1,9 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import type { Dashboard as Data } from "@/lib/types";
+import type { Dashboard as Data, Questionnaire } from "@/lib/types";
 import {
   INDICATEURS, POIDS_DEFAUT, choisirPilotes, classementImplantation, economieSP98, fmt, questionnaireActif,
   scenarioE85, scenarioSP98, usineEthanol, valeurCommune,
@@ -48,9 +49,13 @@ export default function Dashboard() {
   const [erreur, setErreur] = useState<string | null>(null);
 
   useEffect(() => {
+    // Données publiques du pipeline + agrégats du questionnaire, calculés en direct depuis la base.
+    const agregats = fetch("/api/questionnaire/agregats")
+      .then((r) => (r.ok ? (r.json() as Promise<Questionnaire>) : { disponible: false as const }))
+      .catch(() => ({ disponible: false as const }));
     fetch("/data/dashboard.json")
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then(setData)
+      .then((r) => (r.ok ? (r.json() as Promise<Data>) : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then(async (d) => setData({ ...d, questionnaire: await agregats }))
       .catch((e: Error) => setErreur(e.message));
   }, []);
 
@@ -142,6 +147,7 @@ function Vue({ data }: { data: Data }) {
           </div>
           <div className="flex items-center gap-2">
             <span className="hidden text-[12px] text-muted md:block">Données du {new Date(data.genere_le).toLocaleDateString("fr-FR")}</span>
+            <Link href="/questionnaire" className="rounded-xl bg-s1 px-3.5 py-2 text-[13px] font-medium text-white hover:opacity-90">Répondre au questionnaire</Link>
             <RefreshButton />
             <ThemeButton dark={dark} />
           </div>

@@ -17,15 +17,12 @@ import csv
 import io
 import json
 import math
-import os
 import sys
 import time
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
-
-import questionnaire
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE = ROOT / "pipeline" / ".cache"
@@ -107,12 +104,6 @@ SOURCES = {
         "producer": "INSEE, API Melodi (DS_FILOSOFI_CC)",
         "licence": "Licence Ouverte v2.0",
         "page": "https://catalogue-donnees.insee.fr/fr/catalogue/recherche/DS_FILOSOFI_CC",
-    },
-    "questionnaire": {
-        "label": "Questionnaire de demande (onglet export, sans données personnelles)",
-        "producer": "Étude Carburants Réunion 2026, via Google Forms",
-        "licence": "Données collectées pour l'étude, publiées uniquement agrégées",
-        "page": "https://docs.google.com/forms/d/e/1FAIpQLSdvP47alHTnmI0-EWfT7cfaEmv9jShouHJiuauRGj8C2JiDNQ/viewform",
     },
     "prix": {
         "label": "Prix maximums des carburants (arrêtés préfectoraux mensuels)",
@@ -223,18 +214,6 @@ def fetch_melodi(name, dataset, codes, force, **filtres):
     return json.loads(body)["observations"]
 
 
-def fetch_questionnaire(force):
-    """Réponses de l'onglet export publié en CSV. L'adresse reste hors du dépôt (variable
-    d'environnement QUESTIONNAIRE_CSV_URL, secret GitHub en CI) : elle donne accès aux
-    réponses ligne à ligne, alors que le tableau de bord n'en publie que des agrégats."""
-    url = os.environ.get("QUESTIONNAIRE_CSV_URL")
-    if not url:
-        log("questionnaire : QUESTIONNAIRE_CSV_URL absente, étape ignorée")
-        return None
-    body = Path(url).read_bytes() if Path(url).exists() else fetch("questionnaire.csv", url, force)
-    return read_csv(body, delimiter=",")
-
-
 def collect(force):
     CACHE.mkdir(parents=True, exist_ok=True)
     communes = json.loads(fetch(
@@ -271,7 +250,6 @@ def collect(force):
         "canne": fetch_cane_parcels(force),
         "campagnes": read_manual("campagnes_sucrieres.csv"),
         "prix": read_manual("prix_prefecture.csv"),
-        "questionnaire": fetch_questionnaire(force),
     }
 
 
@@ -503,8 +481,7 @@ def run(force=False):
              "conso": len(raw["conso"]), "stations": len(stations), "tmja": len(raw["tmja"]),
              "sucrerie": len(raw["sucrerie"]), "canne": len(raw["canne"]),
              "campagnes": len(raw["campagnes"]), "prix": len(raw["prix"]),
-             "menages": len(raw["menages"]), "revenus": len(raw["revenus"]),
-             "questionnaire": len(raw["questionnaire"] or [])}
+             "menages": len(raw["menages"]), "revenus": len(raw["revenus"])}
     for key, src in SOURCES.items():
         entry = dict(src, lignes=sizes[key], recupere_le=None)
         if key in files:
@@ -516,12 +493,6 @@ def run(force=False):
     meta["parc"]["millesime"] = years[-1]
     meta["immat"]["millesime"] = immat["annees"][-1]
     meta["menages"]["millesime"] = meta["revenus"]["millesime"] = 2023
-    if raw["questionnaire"] is None:
-        del meta["questionnaire"]
-    elif (CACHE / "questionnaire.csv").exists():
-        mtime = (CACHE / "questionnaire.csv").stat().st_mtime
-        meta["questionnaire"]["recupere_le"] = datetime.fromtimestamp(mtime, timezone.utc).isoformat(timespec="minutes")
-    code_par_nom = {c["nom"]: code for code, c in communes.items()}
 
     out = {
         "genere_le": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -540,8 +511,6 @@ def run(force=False):
                        "source": r["source"]} for r in raw["campagnes"]],
         "prix": [{"mois": r["mois"], "produit": r["produit"], "prix": float(r["prix_max_eur_l"]),
                   "source": r["source"], "verifie": r["verifie"] == "oui"} for r in raw["prix"]],
-        "questionnaire": (questionnaire.agreger(raw["questionnaire"], code_par_nom)
-                          if raw["questionnaire"] is not None else {"disponible": False}),
         "sources": meta,
     }
     OUT.mkdir(parents=True, exist_ok=True)
