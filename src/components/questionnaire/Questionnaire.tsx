@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { ID_PERSONNELS, etapesVisibles, publicDe, questionsVisibles, valider, type Reponses, type Valeur } from "@/lib/questionnaire/schema";
 import { NOMS_COMMUNES } from "@/lib/questionnaire/communes";
 import { Champ } from "./Champ";
+import { Alerte } from "../ui";
 
 const BROUILLON = "questionnaire-brouillon-v1";
 
@@ -133,7 +134,7 @@ export default function Questionnaire() {
         </div>
       </section>
 
-      {message && <p className="mt-4 rounded-xl border border-critical/40 bg-critical/10 p-3 text-[13.5px]" role="alert">{message}</p>}
+      {message && <div className="mt-4"><Alerte ton="erreur" onFermer={() => setMessage(null)}>{message}</Alerte></div>}
 
       <div className="mt-5 flex items-center justify-between gap-3">
         <button type="button" onClick={() => { setIndex(Math.max(0, i - 1)); window.scrollTo({ top: 0, behavior: "smooth" }); }} disabled={i === 0}

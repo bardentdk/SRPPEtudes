@@ -6,7 +6,7 @@ import type { Public } from "@/lib/types";
 import { QUESTIONS, labelDe, type Reponses } from "@/lib/questionnaire/schema";
 import { COMMUNES } from "@/lib/questionnaire/communes";
 import { fmt } from "@/lib/analysis";
-import { Card, Kpi, Vide } from "../ui";
+import { Alerte, Card, Kpi, Vide, type Ton } from "../ui";
 import { Ranking } from "../charts";
 import { useTokens } from "../useTokens";
 import Markdown from "./Markdown";
@@ -39,7 +39,7 @@ export default function Admin({ email }: { email: string }) {
   const [fiche, setFiche] = useState<Fiche | null>(null);
   const [analyses, setAnalyses] = useState<Analyse[]>([]);
   const [analyseEnCours, setAnalyseEnCours] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ ton: Ton; texte: string; zone?: "ia" } | null>(null);
 
   const query = useMemo(() => new URLSearchParams(Object.entries(filtres).filter(([, v]) => v)).toString(), [filtres]);
 
@@ -73,7 +73,7 @@ export default function Admin({ email }: { email: string }) {
   const supprimer = async (id: string) => {
     if (!window.confirm("Supprimer définitivement cette réponse et ses coordonnées ? Cette action est irréversible.")) return;
     const res = await fetch(`/api/admin/reponses/${id}`, { method: "DELETE" });
-    setMessage(res.ok ? "Réponse supprimée." : "La suppression a échoué.");
+    setMessage(res.ok ? { ton: "succes", texte: "Réponse supprimée, ainsi que ses coordonnées." } : { ton: "erreur", texte: "La suppression a échoué." });
     setFiche(null);
     charger();
   };
@@ -81,7 +81,9 @@ export default function Admin({ email }: { email: string }) {
   const resynchroniser = async () => {
     const res = await fetch("/api/admin/resync", { method: "POST" });
     const c = (await res.json()) as { a_envoyer?: number; envoyees?: number };
-    setMessage(`${c.envoyees ?? 0} réponse(s) copiée(s) dans la Google Sheet sur ${c.a_envoyer ?? 0} en attente.`);
+    const texte = `${c.envoyees ?? 0} réponse(s) copiée(s) dans la Google Sheet sur ${c.a_envoyer ?? 0} en attente.`
+      + (c.a_envoyer && !c.envoyees ? " Vérifiez le déploiement de reception.gs et les variables SHEET_WEBHOOK_URL et SHEET_WEBHOOK_TOKEN." : "");
+    setMessage({ ton: !c.a_envoyer || c.envoyees === c.a_envoyer ? "succes" : c.envoyees ? "attention" : "erreur", texte });
     charger();
   };
 
@@ -91,7 +93,8 @@ export default function Admin({ email }: { email: string }) {
     const res = await fetch(`/api/admin/analyse?${query}`, { method: "POST" });
     const c = (await res.json()) as { analyse?: Analyse; error?: string };
     if (c.analyse) setAnalyses((a) => [c.analyse!, ...a]);
-    else setMessage(c.error ?? "L'analyse a échoué.");
+    else setMessage({ ton: "erreur", texte: c.error ?? "L'analyse a échoué.", zone: "ia" });
+    if (c.analyse) setMessage({ ton: "succes", texte: `Analyse terminée sur ${c.analyse.nb_reponses} réponse(s).`, zone: "ia" });
     setAnalyseEnCours(false);
   };
 
@@ -142,7 +145,7 @@ export default function Admin({ email }: { email: string }) {
         </div>
       </Card>
 
-      {message && <p className="rounded-xl border border-line bg-surface p-3 text-[13.5px]" role="status">{message}</p>}
+      {message && message.zone !== "ia" && <Alerte ton={message.ton} onFermer={() => setMessage(null)}>{message.texte}</Alerte>}
 
       <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
         <Card title={`Réponses (${visibles.length})`} actions={
@@ -209,6 +212,8 @@ export default function Admin({ email }: { email: string }) {
         actions={<button onClick={analyser} disabled={analyseEnCours || !lignes?.length} className="rounded-xl bg-ink px-4 py-2 text-[13px] font-medium text-plane disabled:opacity-50">
           {analyseEnCours ? "Analyse en cours…" : `Analyser ${lignes ? fmt.n(Math.min(lignes.length, 400)) : ""} réponse(s)`}
         </button>}>
+        {message?.zone === "ia" && <div className="mb-4"><Alerte ton={message.ton} onFermer={() => setMessage(null)}>{message.texte}</Alerte></div>}
+        {analyseEnCours && <div className="mb-4"><Alerte ton="info">Analyse en cours : Groq rédige la synthèse, cela prend en général 10 à 30 secondes.</Alerte></div>}
         {!analyses.length ? <Vide>Aucune analyse pour l&apos;instant.</Vide> : (
           <div className="space-y-5">
             {analyses.map((a, k) => (

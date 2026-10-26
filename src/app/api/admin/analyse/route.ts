@@ -53,7 +53,7 @@ export async function POST(request: Request) {
       .filter(([k]) => !ID_PERSONNELS.includes(k))
       .map(([k, v]) => [k, typeof v === "string" ? anonymiser(v) : v])),
   }));
-  const modele = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+  const modele = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
   const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: { Authorization: `Bearer ${cle}`, "Content-Type": "application/json" },
@@ -69,7 +69,9 @@ export async function POST(request: Request) {
     cache: "no-store",
   }).catch(() => null);
   if (!res?.ok) {
-    return Response.json({ error: `Groq n'a pas répondu (${res?.status ?? "réseau"}).` }, { status: 502 });
+    // Message d'erreur de Groq (modèle retiré, quota…) : utile à l'admin, sans rien de sensible.
+    const detail = ((await res?.json().catch(() => null)) as { error?: { message?: string } } | null)?.error?.message;
+    return Response.json({ error: `Groq a refusé la demande (${res?.status ?? "réseau"})${detail ? ` : ${detail}` : "."}` }, { status: 502 });
   }
   const corps = (await res.json()) as { choices?: { message?: { content?: string } }[] };
   const resultat = corps.choices?.[0]?.message?.content?.trim();

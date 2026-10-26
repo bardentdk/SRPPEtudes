@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { authClient } from "@/lib/auth-client";
+import { Alerte } from "../ui";
 
 export default function Connexion() {
   const router = useRouter();
@@ -34,7 +35,7 @@ export default function Connexion() {
         <input type="password" required autoComplete="current-password" value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)}
           className="mt-1.5 w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[15px]" />
       </label>
-      {erreur && <p className="text-[13px] font-medium text-critical" role="alert">{erreur}</p>}
+      {erreur && <Alerte ton="erreur">{erreur}</Alerte>}
       <button type="submit" disabled={envoi} className="w-full rounded-xl bg-ink px-4 py-2.5 text-[14px] font-medium text-plane disabled:opacity-50">
         {envoi ? "Connexion…" : "Se connecter"}
       </button>

@@ -163,3 +163,26 @@ export function Mesure({ children }: { children: ReactNode }) {
     </li>
   );
 }
+
+export type Ton = "succes" | "erreur" | "attention" | "info";
+
+const TONS: Record<Ton, { couleur: string; icone: string; libelle: string }> = {
+  succes: { couleur: "var(--good)", icone: "✓", libelle: "Succès" },
+  erreur: { couleur: "var(--critical)", icone: "✕", libelle: "Erreur" },
+  attention: { couleur: "var(--warning)", icone: "!", libelle: "Attention" },
+  info: { couleur: "var(--s1)", icone: "i", libelle: "Information" },
+};
+
+/** Bandeau de retour d'action : couleur, icône et libellé, pour ne jamais reposer sur la couleur seule. */
+export function Alerte({ ton, children, onFermer }: { ton: Ton; children: ReactNode; onFermer?: () => void }) {
+  const t = TONS[ton];
+  return (
+    <div role={ton === "erreur" ? "alert" : "status"}
+      className="flex items-start gap-3 rounded-xl border p-3.5 text-[13.5px]"
+      style={{ borderColor: t.couleur, background: `color-mix(in srgb, ${t.couleur} 12%, var(--surface))` }}>
+      <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold text-white" style={{ background: t.couleur }} aria-hidden>{t.icone}</span>
+      <div className="flex-1"><strong className="mr-1.5">{t.libelle} :</strong>{children}</div>
+      {onFermer && <button onClick={onFermer} className="text-ink-2 hover:text-ink" aria-label="Fermer le message">✕</button>}
+    </div>
+  );
+}
