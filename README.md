@@ -56,6 +56,29 @@ Sans ces variables, le site fonctionne normalement ; seul le bouton d'actualisat
 - `pipeline/manual/prix_prefecture.csv` : prix maximums mensuels (communiqués de la préfecture). Passez `verifie` à `oui` une fois la valeur contrôlée sur l'arrêté.
 - `pipeline/manual/campagnes_sucrieres.csv` : tonnage de chaque campagne (notes de conjoncture DAAF). La campagne 2025 sera à ajouter dès la publication de son bilan.
 
+## Questionnaire de demande
+
+Le formulaire Google « Étude Carburants Réunion 2026 » est généré par `questionnaire/creer-formulaire.gs`, un script à exécuter dans Apps Script :
+- `reconstruireFormulaire()` réécrit le formulaire existant sans changer son lien ;
+- `creerFormulaire()` crée un nouveau formulaire.
+
+Chaque public suit son propre parcours : particulier, professionnel de l'automobile, club, station ou distributeur, filière canne.
+
+Branchement sur le tableau de bord :
+1. Dans la feuille de réponses, publiez **uniquement l'onglet `export`** au format CSV (*Fichier → Partager → Publier sur le Web*). Cet onglet ne contient ni coordonnées ni texte libre.
+2. Enregistrez l'adresse obtenue dans le secret GitHub `QUESTIONNAIRE_CSV_URL` (*Settings → Secrets and variables → Actions*). En local, exportez la même variable avant de lancer `pipeline/run.py`.
+3. `pipeline/questionnaire.py` ne publie que des agrégats. Toute répartition calculée sur moins de 3 réponses est masquée.
+
+Si vous modifiez un intitulé de question dans le script, reportez le début de l'intitulé dans `COLONNES` (`pipeline/questionnaire.py`).
+
+## Modèle économique
+
+- **SP98** : le résultat annuel de la filière est calculé pour chaque surcoût entre +0,05 et +0,40 €/L. La demande vient soit du questionnaire (part des véhicules concernés × adoption déclarée), soit d'une hypothèse de captation.
+- **E85, unité de production** : une distillerie de mélasse (1G) et une unité de paille de canne (2G) sont comparées côte à côte. Pour chacune : investissement, exploitation, matière, transport, VAN, TRI, délai de retour, emplois et importations évitées.
+- **Implantation** : chaque station-service reçoit un score pondéré sur 9 facteurs (trafic, densité, motorisation des ménages, niveau de vie, parc essence, questionnaire, proximité de l'usine…). Les premières pompes sont choisies avec un écart minimal entre elles.
+
+Les valeurs par défaut viennent de références publiques, citées sous chaque curseur (`src/lib/hypotheses.ts`). Les valeurs sans source sont signalées comme des estimations.
+
 ## Limites connues
 
 - Aucune source publique ne compte les véhicules pour lesquels le 98 est préconisé : c'est l'hypothèse la plus sensible du modèle SP98.

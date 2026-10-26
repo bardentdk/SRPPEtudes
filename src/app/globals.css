@@ -21,6 +21,8 @@
   --warning: #fab219;
   --critical: #d03b3b;
   --good-ink: #006300;
+  --sea: #dbe6f0;
+  --land: #f3f2ec;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -39,6 +41,8 @@
     --s3: #199e70;
     --s4: #c98500;
     --good-ink: #0ca30c;
+    --sea: #0e1621;
+    --land: #2b2b28;
   }
 }
 
@@ -57,12 +61,15 @@
   --s3: #199e70;
   --s4: #c98500;
   --good-ink: #0ca30c;
+  --sea: #0e1621;
+  --land: #2b2b28;
 }
 
 @theme inline {
   --color-plane: var(--plane);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
+  --color-sea: var(--sea);
   --color-ink: var(--ink);
   --color-ink-2: var(--ink-2);
   --color-muted: var(--muted);

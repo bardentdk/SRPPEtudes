@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import {
-  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { fmt } from "@/lib/analysis";
 import type { Tokens } from "./useTokens";
@@ -74,7 +74,9 @@ export function StackedArea({ data, series, tokens, height = 240 }: { data: Row[
   );
 }
 
-export function StackedBars({ data, series, tokens, height = 240, xKey = "annee" }: { data: Row[]; series: SerieDef[]; tokens: Tokens; height?: number; xKey?: string }) {
+export function StackedBars({ data, series, tokens, height = 240, xKey = "annee", format = fmt.n, total = true }: {
+  data: Row[]; series: SerieDef[]; tokens: Tokens; height?: number; xKey?: string; format?: (v: number) => string; total?: boolean;
+}) {
   return (
     <>
       <Legend series={series} />
@@ -82,8 +84,8 @@ export function StackedBars({ data, series, tokens, height = 240, xKey = "annee"
         <BarChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
           <CartesianGrid stroke={tokens.grid} vertical={false} />
           <XAxis dataKey={xKey} {...AXIS(tokens)} />
-          <YAxis {...AXIS(tokens)} axisLine={false} width={44} tickFormatter={fmt.compact} />
-          <Tooltip content={seriesTooltip(series, fmt.n, true)} cursor={{ fill: tokens.grid, opacity: 0.5 }} />
+          <YAxis {...AXIS(tokens)} axisLine={false} width={44} tickFormatter={(v) => (format === fmt.n ? fmt.compact(Number(v)) : format(Number(v)))} />
+          <Tooltip content={seriesTooltip(series, format, total)} cursor={{ fill: tokens.grid, opacity: 0.5 }} />
           {series.map((s, i) => (
             <Bar key={s.key} dataKey={s.key} stackId="1" fill={s.color} stroke={tokens.surface} strokeWidth={1}
               radius={i === series.length - 1 ? [4, 4, 0, 0] : 0} maxBarSize={28} />
@@ -188,6 +190,36 @@ export function SimpleBars({ data, color, tokens, format, height = 220 }: {
         <Bar dataKey="v" fill={color} radius={[4, 4, 0, 0]} maxBarSize={44}
           label={{ position: "top", fill: tokens.ink2, fontSize: 11, formatter: (v: unknown) => fmt.compact(Number(v)) }} />
       </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+/** Courbe d'une seule série sur un axe x numérique, avec repères verticaux (valeur choisie, optimum…). */
+export function CourbeXY({ data, x, y, color, tokens, formatX, formatY, reperes = [], height = 240 }: {
+  data: Row[]; x: string; y: string; color: string; tokens: Tokens; formatX: (v: number) => string; formatY: (v: number) => string;
+  reperes?: { x: number; label: string; color?: string }[]; height?: number;
+}) {
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <LineChart data={data} margin={{ top: 22, right: 16, left: 0, bottom: 0 }}>
+        <CartesianGrid stroke={tokens.grid} vertical={false} />
+        <XAxis dataKey={x} type="number" domain={["dataMin", "dataMax"]} {...AXIS(tokens)} tickFormatter={(v) => formatX(Number(v))} />
+        <YAxis {...AXIS(tokens)} axisLine={false} width={56} tickFormatter={(v) => formatY(Number(v))} />
+        <ReferenceLine y={0} stroke={tokens.axis} />
+        {reperes.map((r) => (
+          <ReferenceLine key={r.label} x={r.x} stroke={r.color ?? tokens.ink2} strokeDasharray="4 4"
+            label={{ value: r.label, position: "top", fill: tokens.ink2, fontSize: 11 }} />
+        ))}
+        <Tooltip
+          cursor={{ stroke: tokens.axis }}
+          content={({ active, payload }) =>
+            active && payload?.length ? (
+              <TooltipBox title={formatX(Number(payload[0].payload[x]))} rows={[{ label: "Valeur", value: formatY(Number(payload[0].value)), color }]} />
+            ) : null
+          }
+        />
+        <Line dataKey={y} stroke={color} strokeWidth={2.5} dot={false} activeDot={{ r: 5, stroke: tokens.surface, strokeWidth: 2 }} isAnimationActive={false} />
+      </LineChart>
     </ResponsiveContainer>
   );
 }
