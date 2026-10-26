@@ -18,15 +18,38 @@ if (!url) {
 }
 console.log(`Base visée : ${new URL(url).hostname.split(".")[0]}`);
 
-const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+/** Saisie sans écho : le terminal passe en mode brut et rien n'est affiché pendant la frappe. */
+function demanderMasque(question) {
+  const stdin = process.stdin;
+  process.stdout.write(question);
+  if (!stdin.isTTY) throw new Error("Lancez le script dans un terminal pour saisir le mot de passe.");
+  stdin.setRawMode(true);
+  stdin.setEncoding("utf8");
+  stdin.resume();
+  return new Promise((resolve, reject) => {
+    let saisie = "";
+    const fin = () => {
+      stdin.setRawMode(false);
+      stdin.pause();
+      stdin.off("data", surFrappe);
+      process.stdout.write("\n");
+    };
+    const surFrappe = (morceau) => {
+      for (const c of morceau) {
+        if (c === "\r" || c === "\n") return fin(), resolve(saisie);
+        if (c === "\u0003") return fin(), reject(new Error("Saisie annulée."));
+        if (c === "\u007f" || c === "\b") saisie = saisie.slice(0, -1);
+        else saisie += c;
+      }
+    };
+    stdin.on("data", surFrappe);
+  });
+}
+
+const rl = createInterface({ input: process.stdin, output: process.stdout });
 const email = (await rl.question("Adresse e-mail de l'admin : ")).trim().toLowerCase();
-// Masque la saisie du mot de passe.
-const ecrire = rl._writeToOutput.bind(rl);
-rl._writeToOutput = (s) => ecrire(s.includes("Mot de passe") ? s : "");
-const motDePasse = await rl.question("Mot de passe (12 caractères minimum) : ");
-rl._writeToOutput = ecrire;
 rl.close();
-console.log("");
+const motDePasse = await demanderMasque("Mot de passe (12 caractères minimum, rien ne s'affiche) : ");
 
 if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Adresse invalide.");
 if (motDePasse.length < 12) throw new Error("Mot de passe trop court.");
