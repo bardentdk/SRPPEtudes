@@ -14,6 +14,7 @@ import { RAMPE, seuils, type Couches } from "@/lib/carto";
 import { Card, Segmented, Toggle } from "./ui";
 import { Ranking } from "./charts";
 import RefreshButton from "./RefreshButton";
+import Logo from "./Logo";
 import { useTokens } from "./useTokens";
 import { EnsembleDetail, EnsembleSynthese } from "./tabs/Ensemble";
 import { Sp98Detail, Sp98Synthese } from "./tabs/Sp98";
@@ -135,11 +136,7 @@ function Vue({ data }: { data: Data }) {
       <header className="sticky top-0 z-[1100] -mx-4 mb-6 border-b border-line bg-plane/85 px-4 backdrop-blur sm:-mx-6 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-3 py-3.5">
           <div className="flex items-center gap-3">
-            <div className="grid h-9 w-9 place-items-center rounded-xl bg-ink text-plane">
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
-                <path d="M4 20V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v14M3 20h12M14 9h2a2 2 0 0 1 2 2v5a1.5 1.5 0 0 0 3 0V8l-3-3M7 8h4" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
+            <Logo size={40} className="shrink-0 text-ink" />
             <div>
               <h1 className="text-[17px] font-semibold leading-tight tracking-tight">Carburants Réunion</h1>
               <p className="text-[12.5px] text-ink-2">SP98 importé et E85 issu de la canne : étude de viabilité sur données officielles</p>

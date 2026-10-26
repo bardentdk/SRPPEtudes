@@ -21,6 +21,7 @@ src/lib/questionnaire/          schéma du questionnaire, agrégation, accès se
 db/migrations/, scripts/        schéma SQL (Neon), migrations et création des comptes admin
 src/app/questionnaire, /admin   questionnaire public et espace admin (routes API sous src/app/api)
 questionnaire/reception.gs      copie des réponses dans Google Sheets
+public/brand/                   logo en SVG et PNG transparents (sombre pour fond clair, clair pour fond sombre)
 .github/workflows/refresh-data.yml   collecte planifiée (lundi 3 h UTC) ou à la demande
 ```
 
