@@ -1,0 +1,42 @@
+# Actualise public/data/dashboard.json depuis les sources officielles.
+# Déclenché chaque lundi, à la main depuis GitHub, ou par le bouton « Actualiser » du site
+# (route /api/refresh). Le commit des nouvelles données redéclenche le déploiement Vercel.
+name: Actualisation des données
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Collecte et traitement
+        run: python3 pipeline/run.py --force
+
+      - name: Commit si les données ont changé
+        run: |
+          if git diff --quiet -- public/data; then
+            echo "Aucun changement."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/data
+          git commit -m "data: actualisation $(date -u +%Y-%m-%d)"
+          git push
